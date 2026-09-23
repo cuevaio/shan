@@ -1,5 +1,5 @@
-import type { EasingName, MotionSpec } from "@/lib/motion-spec";
-import { strokeSpan, strokeVector, type StrokePoint } from "@/lib/stroke";
+import type { EasingName, MotionSpec } from "./motion-spec";
+import { strokeSpan, strokeVector, type StrokePoint } from "./stroke";
 
 const TRAVEL = 180;
 
@@ -17,6 +17,23 @@ export type PlaybackPlan = {
   iterations: number;
   fill: FillMode;
 };
+
+export function stopMotion(element: Element | null) {
+  if (typeof HTMLElement === "undefined" || !(element instanceof HTMLElement)) return;
+  for (const animation of element.getAnimations()) animation.cancel();
+  element.style.transform = "";
+}
+
+export function playMotion(element: Element | null, plan: PlaybackPlan | null) {
+  if (typeof HTMLElement === "undefined" || !(element instanceof HTMLElement) || !plan) return null;
+  stopMotion(element);
+  return element.animate(plan.frames, {
+    duration: plan.duration,
+    easing: plan.easing,
+    iterations: plan.iterations,
+    fill: plan.fill,
+  });
+}
 
 function monotonic(frames: Keyframe[]) {
   if (frames.length === 0) return frames;

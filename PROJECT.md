@@ -6,7 +6,7 @@ paths.
 
 **Last updated:** 2026-09-23  
 **Status:** active  
-**Type:** landing
+**Type:** monorepo
 
 ## Goal
 
@@ -21,7 +21,7 @@ with the cursor.
 
 ## Current state
 
-The demo page is a private-account landing called Sable: a card, a transfer, and a member. A chosen picture on the page opens a toolbox beside it. Without an API key the picture follows a local cleanup of the stroke. With `NEBIUS_API_KEY`, refine sends the path coordinates to Nebius Token Factory and plays the named motion it returns.
+The repository is a Turborepo with a publishable `nebi-agent` package and two Next.js examples. The Shan example is a private-account landing called Sable: a card, a transfer, and a member. A chosen picture opens a toolbox beside it. Without an API key the picture follows a local cleanup of the stroke. With `NEBIUS_API_KEY`, refine sends the path coordinates to Nebius Token Factory and plays the named motion it returns. The Nebi example demonstrates prompt-driven live code editing with keep and discard controls.
 
 ## Next action
 

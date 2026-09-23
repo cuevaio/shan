@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   turbopack: {
-    root: path.dirname(fileURLToPath(import.meta.url)),
+    root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
   },
 };
 

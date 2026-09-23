@@ -4,27 +4,34 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
+import {
+  cleanupPlan,
+  cleanStroke,
+  parseMotionSpec,
+  playMotion,
+  playingLine,
+  readingPlan,
+  sampleForModel,
+  stopMotion,
+  strokeIsUsable,
+  useStrokeCapture,
+  type MotionSpec,
+  type StrokePoint,
+} from "nebi-agent/motion";
 import { Toolbox, type RefineView } from "@/components/toolbox";
 import { cn } from "@/lib/utils";
-import { parseMotionSpec, playingLine, type MotionSpec } from "@/lib/motion-spec";
-import { cleanupPlan, readingPlan } from "@/lib/playback";
 import { PICTURES, type PictureId } from "@/lib/pictures";
-import { cleanStroke, sampleForModel, strokeIsUsable, type StrokePoint } from "@/lib/stroke";
 
 type Playback =
   | { kind: "cleanup" }
   | { kind: "reading"; spec: MotionSpec };
 
-function stopMotion(nodes: Partial<Record<PictureId, HTMLDivElement | null>>) {
+function stopAllMotion(nodes: Partial<Record<PictureId, HTMLDivElement | null>>) {
   for (const node of Object.values(nodes)) {
-    if (!node) continue;
-    for (const animation of node.getAnimations()) animation.cancel();
-    node.style.transform = "";
+    stopMotion(node);
   }
 }
 
@@ -35,25 +42,31 @@ function polyline(points: StrokePoint[]) {
 export function Demo() {
   const [open, setOpen] = useState(false);
   const [pictureId, setPictureId] = useState<PictureId | null>(null);
-  const [rawPoints, setRawPoints] = useState<StrokePoint[]>([]);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [refineView, setRefineView] = useState<RefineView>({ status: "idle" });
   const [playback, setPlayback] = useState<Playback | null>(null);
   const nodes = useRef<Partial<Record<PictureId, HTMLDivElement | null>>>({});
   const buttons = useRef<Partial<Record<PictureId, HTMLButtonElement | null>>>({});
-  const pointsRef = useRef<StrokePoint[]>([]);
   const returnFocus = useRef<PictureId | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const drawing = useRef(false);
-  const [strokeLive, setStrokeLive] = useState(false);
-  const startedAt = useRef(0);
-  const lastPoint = useRef<StrokePoint | null>(null);
-  const sampleTimer = useRef<number | null>(null);
   const pictureIdRef = useRef<PictureId | null>(null);
-
-  const cleanedPoints = useMemo(() => cleanStroke(rawPoints), [rawPoints]);
-  const strokeReady = strokeIsUsable(rawPoints);
+  const {
+    points: rawPoints,
+    cleanedPoints,
+    ready: strokeReady,
+    drawing: strokeLive,
+    bindings: strokeBindings,
+    clear: clearCapturedStroke,
+    getPoints,
+  } = useStrokeCapture({
+    enabled: pictureId !== null,
+    shouldIgnoreTarget: shouldIgnoreDrawTarget,
+    onStart() {
+      setRefineView({ status: "idle" });
+      setPlayback(null);
+      stopAllMotion(nodes.current);
+    },
+  });
 
   useEffect(() => {
     pictureIdRef.current = pictureId;
@@ -98,19 +111,13 @@ export function Demo() {
   useEffect(() => {
     const activeNodes = nodes.current;
     return () => {
-      stopMotion(activeNodes);
-      if (sampleTimer.current !== null) window.clearInterval(sampleTimer.current);
+      stopAllMotion(activeNodes);
     };
   }, []);
 
-  function remember(next: StrokePoint[]) {
-    pointsRef.current = next;
-    setRawPoints(next);
-  }
-
   function play(next: Playback, points: StrokePoint[], targetId: PictureId) {
     setPlayback(next);
-    stopMotion(nodes.current);
+    stopAllMotion(nodes.current);
     const node = nodes.current[targetId];
     if (!node) return;
 
@@ -121,12 +128,7 @@ export function Demo() {
         : readingPlan(next.spec, points, reduced);
     if (!plan) return;
 
-    node.animate(plan.frames, {
-      duration: plan.duration,
-      easing: plan.easing,
-      iterations: plan.iterations,
-      fill: plan.fill,
-    });
+    playMotion(node, plan);
     node.scrollIntoView({ block: "start", behavior: "smooth" });
   }
 
@@ -136,55 +138,20 @@ export function Demo() {
 
   function selectPicture(id: PictureId) {
     if (id !== pictureId) {
-      remember([]);
+      clearCapturedStroke();
       setRefineView(configured === false ? { status: "waiting" } : { status: "idle" });
       setPlayback(null);
-      stopMotion(nodes.current);
+      stopAllMotion(nodes.current);
     }
     setPictureId(id);
     setOpen(true);
   }
 
-  function startDraw(point: StrokePoint) {
-    setRefineView({ status: "idle" });
-    setPlayback(null);
-    stopMotion(nodes.current);
-    remember([point]);
-  }
-
-  function moveDraw(point: StrokePoint) {
-    const current = pointsRef.current;
-    const last = current[current.length - 1];
-    if (last && Math.hypot(last.x - point.x, last.y - point.y) < 0.004 && point.t - last.t < 24) {
-      return;
-    }
-    remember([...current, point]);
-  }
-
   function clearStroke() {
-    remember([]);
+    clearCapturedStroke();
     setRefineView(configured === false ? { status: "waiting" } : { status: "idle" });
     setPlayback(null);
-    stopMotion(nodes.current);
-  }
-
-  function clearSampleTimer() {
-    if (sampleTimer.current !== null) {
-      window.clearInterval(sampleTimer.current);
-      sampleTimer.current = null;
-    }
-  }
-
-  function pointFromClient(clientX: number, clientY: number): StrokePoint | null {
-    const stage = stageRef.current;
-    if (!stage) return null;
-    const rect = stage.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return null;
-    return {
-      x: Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)),
-      y: Math.min(1, Math.max(0, (clientY - rect.top) / rect.height)),
-      t: performance.now() - startedAt.current,
-    };
+    stopAllMotion(nodes.current);
   }
 
   function shouldIgnoreDrawTarget(target: EventTarget | null) {
@@ -200,66 +167,9 @@ export function Demo() {
     return false;
   }
 
-  function beginStageDraw(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!pictureIdRef.current) return;
-    if (shouldIgnoreDrawTarget(event.target)) return;
-    if (event.button !== 0) return;
-
-    const firstPoint = pointFromClient(event.clientX, event.clientY);
-    if (!firstPoint) return;
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drawing.current = true;
-    setStrokeLive(true);
-    startedAt.current = performance.now();
-    clearSampleTimer();
-    const first = { ...firstPoint, t: 0 };
-    lastPoint.current = first;
-    startDraw(first);
-    sampleTimer.current = window.setInterval(() => {
-      const last = lastPoint.current;
-      if (!drawing.current || !last) return;
-      const next = { x: last.x, y: last.y, t: performance.now() - startedAt.current };
-      if (next.t - last.t < 30) return;
-      lastPoint.current = next;
-      moveDraw(next);
-    }, 40);
-  }
-
-  function moveStageDraw(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!drawing.current) return;
-    const point = pointFromClient(event.clientX, event.clientY);
-    if (!point) return;
-    const last = lastPoint.current;
-    if (
-      last &&
-      Math.hypot(last.x - point.x, last.y - point.y) < 0.004 &&
-      point.t - last.t < 24
-    ) {
-      return;
-    }
-    lastPoint.current = point;
-    moveDraw(point);
-  }
-
-  function endStageDraw(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!drawing.current) return;
-    drawing.current = false;
-    setStrokeLive(false);
-    clearSampleTimer();
-    const point = pointFromClient(event.clientX, event.clientY);
-    if (point) {
-      lastPoint.current = point;
-      moveDraw(point);
-    }
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }
-
   async function refine() {
-    if (!pictureId || !strokeIsUsable(pointsRef.current)) return;
-    const points = pointsRef.current.slice();
+    const points = getPoints();
+    if (!pictureId || !strokeIsUsable(points)) return;
     const targetId = pictureId;
     setRefineView({ status: "loading" });
 
@@ -326,12 +236,8 @@ export function Demo() {
       </a>
 
       <div
-        ref={stageRef}
         className={cn("relative", strokeLive && "touch-none")}
-        onPointerDown={beginStageDraw}
-        onPointerMove={moveStageDraw}
-        onPointerUp={endStageDraw}
-        onPointerCancel={endStageDraw}
+        {...strokeBindings}
       >
         <header className="flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-2 sm:px-10">
           <p className="text-2xl tracking-tight" translate="no">
@@ -473,14 +379,15 @@ export function Demo() {
         onClear={clearStroke}
         onRefine={() => void refine()}
         onPlayCleanup={() => {
-          if (!pictureId || !strokeIsUsable(pointsRef.current)) return;
-          play({ kind: "cleanup" }, pointsRef.current.slice(), pictureId);
+          const points = getPoints();
+          if (!pictureId || !strokeIsUsable(points)) return;
+          play({ kind: "cleanup" }, points, pictureId);
         }}
         onPlayReading={() => {
           if (!pictureId || refineView.status !== "reading") return;
           play(
             { kind: "reading", spec: refineView.spec },
-            pointsRef.current.slice(),
+            getPoints(),
             pictureId,
           );
         }}

@@ -1,36 +1,45 @@
 # Shan
 
-Draw a motion with the cursor. Shan reads the gesture and plays it on a picture.
+Shan is a Bun/Turborepo workspace for in-app drawing and prompt-driven editing.
 
-A shaky circle is an orbit. A pause is a hold. Refine asks a model for a named motion with easing and duration. A local cleanup of the same stroke sits beside that reading: a smoothed polyline, not a guess at the gesture.
+## Workspace
 
-Only the path coordinates are sent. The picture stays in the browser.
+- [`packages/nebi`](packages/nebi) — the publishable `nebi-agent` npm package
+- [`apps/shan`](apps/shan) — the Shan motion-drawing example
+- [`apps/nebi`](apps/nebi) — the Nebi live code-editing example
+
+The package owns the reusable functionality used by the examples:
+
+- pointer-stroke capture, cleanup, sampling, and playback plans
+- model-backed motion refinement for Next.js route handlers
+- prompt-driven code edits with live preview, keep, and discard
 
 ## Develop
 
-```bash
+```sh
 bun install
-bun run dev -- --hostname 127.0.0.1 --port 4721
+cp apps/shan/.env.example apps/shan/.env.local
+cp apps/nebi/.env.example apps/nebi/.env.local
+# Add NEBIUS_API_KEY to the examples you want to run.
+bun run dev
 ```
 
-Open http://127.0.0.1:4721
+- Nebi example: [http://localhost:3000](http://localhost:3000)
+- Shan example: [http://localhost:4721](http://localhost:4721)
 
-The mark at the bottom of the page opens the toolbox. Pick a picture, draw, then refine.
+Run one example with a Turbo filter:
 
-## Model
-
-Refine calls [Nebius Token Factory](https://tokenfactory.nebius.com) when `NEBIUS_API_KEY` is set. The API is OpenAI-compatible.
-
-```bash
-NEBIUS_API_KEY=your_key bun run dev -- --hostname 127.0.0.1 --port 4721
+```sh
+bun run dev --filter=shan-example
+bun run dev --filter=nebi-example
 ```
 
-Optional: `NEBIUS_MODEL`. The default is `meta-llama/Llama-3.3-70B-Instruct`.
+## Verify
 
-Without the key, capture still works and the picture follows the cleaned stroke. The toolbox says the model step is waiting on the key.
+```sh
+bun run test
+bun run typecheck
+bun run build
+```
 
-Copy `.env.example` to `.env.local` if you want the key loaded for you. `.env.local` stays out of git.
-
-## Privacy
-
-The refine request body is a list of `{ x, y, t }` points. It does not include the picture.
+See the [package README](packages/nebi/README.md) for installation and API details.

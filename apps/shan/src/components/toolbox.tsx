@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { motionLabel, type MotionSpec, type StrokePoint } from "nebi-agent/motion";
 import { Button } from "@/components/ui/button";
-import type { MotionSpec } from "@/lib/motion-spec";
-import { motionLabel } from "@/lib/motion-spec";
 import { PICTURES, type PictureId } from "@/lib/pictures";
-import type { StrokePoint } from "@/lib/stroke";
 
 export type RefineView =
   | { status: "idle" }
