@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -376,6 +377,15 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 10,
     background: "rgba(168,230,193,.025)",
   },
+  collapseButton: {
+    border: 0,
+    padding: 0,
+    color: "#969d96",
+    background: "transparent",
+    font: "600 9px/1.3 inherit",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
   file: { borderTop: `1px solid ${line}`, padding: "6px 9px", fontSize: 9 },
   patch: {
     maxHeight: 180,
@@ -616,6 +626,8 @@ export function ShanEditor({
   const [hoverBox, setHoverBox] = useState<Box | null>(null);
   const [pageBeforeChange, setPageBeforeChange] = useState<PageSnapshot>();
   const [motionMessage, setMotionMessage] = useState("");
+  const [areChangesExpanded, setAreChangesExpanded] = useState(true);
+  const changesId = useId();
   const selectedNode = useRef<Element | null>(null);
   const feedNode = useRef<HTMLDivElement | null>(null);
   const stroke = useStrokeCapture({
@@ -780,6 +792,7 @@ export function ShanEditor({
     event?.preventDefault();
     const value = prompt.trim();
     if (!value || busy || readOnly) return;
+    setAreChangesExpanded(true);
     stopMotion(selectedNode.current);
     try {
       const before = capturePageSnapshot(document.body).snapshot;
@@ -1262,44 +1275,59 @@ export function ShanEditor({
                     ? "Applying changes…"
                     : "✓ Changes live"}
                 </span>
-                <span style={{ color: "#969d96", fontWeight: 500 }}>
-                  {proposal.files.length} file
-                  {proposal.files.length === 1 ? "" : "s"}
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#969d96", fontWeight: 500 }}>
+                    {proposal.files.length} file
+                    {proposal.files.length === 1 ? "" : "s"}
+                  </span>
+                  <button
+                    type="button"
+                    style={styles.collapseButton}
+                    aria-expanded={areChangesExpanded}
+                    aria-controls={changesId}
+                    onClick={() =>
+                      setAreChangesExpanded((expanded) => !expanded)
+                    }
+                  >
+                    {areChangesExpanded ? "Hide" : "Show"}
+                  </button>
                 </span>
               </div>
-              <div
-                style={{
-                  padding: "0 10px 9px",
-                  color: "#b9beb9",
-                  fontSize: 10,
-                }}
-              >
-                {proposal.summary}
+              <div id={changesId} hidden={!areChangesExpanded}>
+                <div
+                  style={{
+                    padding: "0 10px 9px",
+                    color: "#b9beb9",
+                    fontSize: 10,
+                  }}
+                >
+                  {proposal.summary}
+                </div>
+                {proposal.files.map((file) => (
+                  <details key={file.path} style={styles.file}>
+                    <summary
+                      style={{
+                        overflow: "hidden",
+                        cursor: "pointer",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span style={{ opacity: 0.65, marginRight: 7 }}>
+                        {file.status}
+                      </span>
+                      {file.path}
+                      <span style={{ marginLeft: 7, color: "#a8e6c1" }}>
+                        +{file.additions}
+                      </span>
+                      <span style={{ marginLeft: 4, color: "#e49d98" }}>
+                        −{file.deletions}
+                      </span>
+                    </summary>
+                    <pre style={styles.patch}>{file.patch}</pre>
+                  </details>
+                ))}
               </div>
-              {proposal.files.map((file) => (
-                <details key={file.path} style={styles.file}>
-                  <summary
-                    style={{
-                      overflow: "hidden",
-                      cursor: "pointer",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <span style={{ opacity: 0.65, marginRight: 7 }}>
-                      {file.status}
-                    </span>
-                    {file.path}
-                    <span style={{ marginLeft: 7, color: "#a8e6c1" }}>
-                      +{file.additions}
-                    </span>
-                    <span style={{ marginLeft: 4, color: "#e49d98" }}>
-                      −{file.deletions}
-                    </span>
-                  </summary>
-                  <pre style={styles.patch}>{file.patch}</pre>
-                </details>
-              ))}
               <div
                 style={{
                   display: "flex",
