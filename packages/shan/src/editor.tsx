@@ -11,6 +11,12 @@ import {
   useState,
 } from "react";
 import {
+  capturePageSnapshot,
+  changedElements,
+  isPageSnapshot,
+  type PageSnapshot,
+} from "./change-preview";
+import {
   cleanStroke,
   cleanupPlan,
   parseMotionSpec,
@@ -22,6 +28,7 @@ import {
   strokePolyline,
   useStrokeCapture,
 } from "./motion";
+import type { ShanModelOption } from "./models";
 import type {
   Proposal,
   SelectedElementContext,
@@ -99,6 +106,18 @@ const styles: Record<string, CSSProperties> = {
     font: "600 12px/1.4 inherit",
     cursor: "pointer",
     whiteSpace: "nowrap",
+  },
+  select: {
+    maxWidth: 190,
+    minWidth: 0,
+    border: "1px solid rgba(255,255,255,.14)",
+    borderRadius: 10,
+    outline: 0,
+    padding: "9px 28px 9px 10px",
+    color: "#d1d5db",
+    background: "#191b21",
+    font: "600 12px/1.4 inherit",
+    cursor: "pointer",
   },
   activeButton: {
     border: "1px solid #a78bfa",
@@ -208,6 +227,31 @@ function boxFor(element: Element | null): Box | null {
   return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
 }
 
+function snapshotStorageKey(endpoint: string) {
+  return `shan:page-before:${endpoint}`;
+}
+
+function savePageSnapshot(endpoint: string, snapshot: PageSnapshot) {
+  try {
+    window.sessionStorage.setItem(snapshotStorageKey(endpoint), JSON.stringify(snapshot));
+  } catch {
+    // A Change Preview still works when session storage is unavailable.
+  }
+}
+
+function readPageSnapshot(endpoint: string) {
+  try {
+    const value: unknown = JSON.parse(window.sessionStorage.getItem(snapshotStorageKey(endpoint)) ?? "null");
+    return isPageSnapshot(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function clearPageSnapshot(endpoint: string) {
+  try { window.sessionStorage.removeItem(snapshotStorageKey(endpoint)); } catch { /* Storage can be disabled. */ }
+}
+
 export function ShanEditor({
   endpoint = "/api/shan",
   className,
@@ -215,11 +259,14 @@ export function ShanEditor({
   previewReloadDelayMs = 500,
 }: ShanEditorProps) {
   const [prompt, setPrompt] = useState("");
+  const [models, setModels] = useState<ShanModelOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string>();
   const [state, setState] = useState<EditorState>({ name: "idle" });
   const [mode, setMode] = useState<EditorMode>("idle");
   const [selected, setSelected] = useState<SelectedElementContext | null>(null);
   const [selectedBox, setSelectedBox] = useState<Box | null>(null);
   const [hoverBox, setHoverBox] = useState<Box | null>(null);
+  const [pageBeforeChange, setPageBeforeChange] = useState<PageSnapshot>();
   const [motionMessage, setMotionMessage] = useState("");
   const [areChangesExpanded, setAreChangesExpanded] = useState(true);
   const changesId = useId();
@@ -241,7 +288,23 @@ export function ShanEditor({
     let cancelled = false;
     void post(endpoint, { action: "status" })
       .then((result) => {
-        if (!cancelled && result.status === "previewing") setState({ name: "previewing", proposal: result.proposal });
+        if (!cancelled && (result.status === "idle" || result.status === "previewing") && result.models) {
+          setModels(result.models);
+          setSelectedModelId((selectedModel) => {
+            let stored: string | null = null;
+            try { stored = window.sessionStorage.getItem(`shan:model:${endpoint}`); } catch {}
+            const candidate = selectedModel ?? stored ?? result.defaultModelId;
+            return result.models?.some((model) => model.id === candidate)
+              ? candidate
+              : result.models?.[0]?.id;
+          });
+        }
+        if (!cancelled && result.status === "previewing") {
+          setState({ name: "previewing", proposal: result.proposal });
+          setPageBeforeChange(readPageSnapshot(endpoint));
+        } else if (!cancelled && result.status === "idle") {
+          clearPageSnapshot(endpoint);
+        }
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -310,13 +373,29 @@ export function ShanEditor({
     const value = prompt.trim();
     if (!value || busy || proposal) return;
     setAreChangesExpanded(true);
+    stopMotion(selectedNode.current);
+    try {
+      const before = capturePageSnapshot(document.body).snapshot;
+      savePageSnapshot(endpoint, before);
+      setPageBeforeChange(before);
+    } catch {
+      clearPageSnapshot(endpoint);
+      setPageBeforeChange(undefined);
+    }
     setState({ name: "working" });
     try {
-      const result = await post(endpoint, { action: "prompt", prompt: value, context: promptContext() });
+      const result = await post(endpoint, {
+        action: "prompt",
+        prompt: value,
+        context: promptContext(),
+        ...(selectedModelId ? { modelId: selectedModelId } : {}),
+      });
       if (result.status !== "previewing") throw new Error("The agent returned an unexpected response.");
       setState({ name: "refreshing", proposal: result.proposal });
       window.setTimeout(() => window.location.reload(), Math.max(0, previewReloadDelayMs));
     } catch (error) {
+      clearPageSnapshot(endpoint);
+      setPageBeforeChange(undefined);
       setState({ name: "error", message: error instanceof Error ? error.message : "Agent request failed." });
     }
   }
@@ -329,6 +408,8 @@ export function ShanEditor({
       if (action === "keep" && result.status !== "kept") throw new Error("The agent returned an unexpected response.");
       if (action === "discard" && result.status !== "discarded") throw new Error("The agent returned an unexpected response.");
       const fileCount = result.status === "kept" || result.status === "discarded" ? result.files.length : 0;
+      clearPageSnapshot(endpoint);
+      setPageBeforeChange(undefined);
       setPrompt("");
       setState({
         name: "success",
@@ -354,7 +435,11 @@ export function ShanEditor({
     if (!selectedNode.current || !strokeIsUsable(points)) return;
     setMotionMessage("Reading the drawing…");
     try {
-      const result = await post(endpoint, { action: "motion", points: sampleForModel(points) });
+      const result = await post(endpoint, {
+        action: "motion",
+        points: sampleForModel(points),
+        ...(selectedModelId ? { modelId: selectedModelId } : {}),
+      });
       if (result.status === "waiting") {
         setMotionMessage(result.message);
         playDrawing();
@@ -388,6 +473,11 @@ export function ShanEditor({
     }
   }
 
+  function selectModel(modelId: string) {
+    setSelectedModelId(modelId);
+    try { window.sessionStorage.setItem(`shan:model:${endpoint}`, modelId); } catch {}
+  }
+
   const drawingReady = strokeIsUsable(stroke.points);
   const contextLabel = selected
     ? `${selected.selector}${stroke.points.length ? ` · drawing ${stroke.points.length} points` : ""}`
@@ -400,15 +490,17 @@ export function ShanEditor({
       {mode === "draw" ? (
         <div
           {...stroke.bindings}
+          data-shan-editor
           aria-label="Draw a note over the page"
           style={{ position: "fixed", inset: 0, zIndex: 2147483645, cursor: "crosshair", touchAction: "none" }}
         />
       ) : null}
       {stroke.points.length > 1 ? (
-        <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true" style={{ position: "fixed", inset: 0, zIndex: 2147483646, width: "100%", height: "100%", pointerEvents: "none" }}>
+        <svg data-shan-editor viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true" style={{ position: "fixed", inset: 0, zIndex: 2147483646, width: "100%", height: "100%", pointerEvents: "none" }}>
           <polyline points={strokePolyline(stroke.points)} fill="none" stroke="#7c3aed" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       ) : null}
+      {proposal && state.name !== "refreshing" ? <ChangeHighlights before={pageBeforeChange} /> : null}
       {hoverBox ? <Highlight box={hoverBox} color="#60a5fa" /> : null}
       {selectedBox ? <Highlight box={selectedBox} color="#a78bfa" /> : null}
 
@@ -438,6 +530,22 @@ export function ShanEditor({
             rows={1}
             style={styles.textarea}
           />
+          {models.length > 1 ? (
+            <select
+              aria-label="AI model"
+              disabled={busy || !!proposal}
+              value={selectedModelId}
+              onChange={(event) => selectModel(event.target.value)}
+              style={{ ...styles.select, opacity: busy || proposal ? .5 : 1 }}
+              title={models.find((model) => model.id === selectedModelId)?.description}
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.id} title={model.description}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <button disabled={!prompt.trim() || busy || !!proposal} type="submit" style={{ ...styles.button, opacity: !prompt.trim() || busy || proposal ? .5 : 1 }}>
             {state.name === "working" ? "Working…" : "Apply"}
           </button>
@@ -496,9 +604,56 @@ export function ShanEditor({
   );
 }
 
-function Highlight({ box, color }: { box: Box; color: string }) {
+function ChangeHighlights({ before }: { before?: PageSnapshot }) {
+  const [elements, setElements] = useState<Element[]>([]);
+  const [boxes, setBoxes] = useState<Array<Box & { key: number }>>([]);
+
+  useEffect(() => {
+    if (!before) {
+      setElements([]);
+      return;
+    }
+    const current = capturePageSnapshot(document.body);
+    setElements(changedElements(before, current));
+  }, [before]);
+
+  useEffect(() => {
+    if (elements.length === 0) {
+      setBoxes([]);
+      return;
+    }
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        setBoxes(elements.flatMap((element, key) => {
+          const box = boxFor(element);
+          return box && box.width > 0 && box.height > 0 ? [{ ...box, key }] : [];
+        }));
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(update);
+    elements.forEach((element) => observer?.observe(element));
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      observer?.disconnect();
+    };
+  }, [elements]);
+
+  return boxes.map(({ key, ...box }) => (
+    <Highlight key={key} box={box} color="#f59e0b" label="Changed" />
+  ));
+}
+
+function Highlight({ box, color, label }: { box: Box; color: string; label?: string }) {
   return (
     <div
+      data-shan-editor
       aria-hidden="true"
       style={{
         position: "fixed",
@@ -513,6 +668,24 @@ function Highlight({ box, color }: { box: Box; color: string }) {
         pointerEvents: "none",
         boxSizing: "border-box",
       }}
-    />
+    >
+      {label ? (
+        <span style={{
+          position: "absolute",
+          top: box.top > 24 ? -23 : 3,
+          left: -2,
+          padding: "2px 6px",
+          borderRadius: "5px 5px 5px 0",
+          color: "#18181b",
+          background: color,
+          font: "700 10px/1.4 ui-sans-serif, system-ui, sans-serif",
+          letterSpacing: ".06em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+        }}>
+          {label}
+        </span>
+      ) : null}
+    </div>
   );
 }

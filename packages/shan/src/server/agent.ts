@@ -5,8 +5,7 @@ import { createAgentTools } from "./tools";
 import { WorkspaceDraft } from "./workspace";
 import { promptWithContext } from "./context";
 import type { ShanPromptContext } from "../types";
-
-const DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4.1-Flash";
+import { DEFAULT_SHAN_MODEL_ID } from "../models";
 
 export type AgentOptions = {
   root: string;
@@ -29,7 +28,7 @@ export async function runCodingAgent(options: AgentOptions) {
   const model = options.model ?? createOpenAI({
     baseURL: "https://api.tokenfactory.nebius.com/v1/",
     apiKey,
-  }).chat(options.modelId ?? DEFAULT_MODEL);
+  }).chat(options.modelId ?? DEFAULT_SHAN_MODEL_ID);
 
   const result = await generateText({
     model,
