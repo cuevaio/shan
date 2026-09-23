@@ -4,6 +4,10 @@ export type StrokePoint = {
   t: number;
 };
 
+export function strokePolyline(points: StrokePoint[]) {
+  return points.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
 export function strokeSpan(points: StrokePoint[]) {
   let minX = Infinity;
   let maxX = -Infinity;

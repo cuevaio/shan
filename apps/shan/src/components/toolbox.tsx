@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { motionLabel, type MotionSpec, type StrokePoint } from "nebi-agent/motion";
+import {
+  motionLabel,
+  strokePolyline,
+  type MotionSpec,
+  type StrokePoint,
+} from "nebi-agent/motion";
 import { Button } from "@/components/ui/button";
 import { PICTURES, type PictureId } from "@/lib/pictures";
 
@@ -29,10 +34,6 @@ type ToolboxProps = {
   onExited: () => void;
 };
 
-function polyline(points: StrokePoint[]) {
-  return points.map((point) => `${point.x},${point.y}`).join(" ");
-}
-
 function StrokePreview({
   rawPoints,
   cleanedPoints,
@@ -50,7 +51,7 @@ function StrokePreview({
     >
       {rawPoints.length > 1 ? (
         <polyline
-          points={polyline(rawPoints)}
+          points={strokePolyline(rawPoints)}
           fill="none"
           stroke="rgba(0,0,0,0.28)"
           strokeWidth="1.5"
@@ -61,7 +62,7 @@ function StrokePreview({
       ) : null}
       {cleanedPoints.length > 1 ? (
         <polyline
-          points={polyline(cleanedPoints)}
+          points={strokePolyline(cleanedPoints)}
           fill="none"
           stroke="black"
           strokeWidth="1.75"

@@ -13,6 +13,7 @@ export {
   cleanStroke,
   sampleForModel,
   strokeIsUsable,
+  strokePolyline,
   strokeSpan,
   strokeVector,
 } from "./motion/stroke";

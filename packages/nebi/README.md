@@ -61,7 +61,7 @@ export function DrawingSurface() {
   const stroke = useStrokeCapture();
 
   return (
-    <div {...stroke.bindings} style={{ touchAction: stroke.drawing ? "none" : undefined }}>
+    <div {...stroke.bindings} style={{ touchAction: "none" }}>
       <button
         onClick={(event) => {
           const plan = cleanupPlan(stroke.cleanedPoints, false);

@@ -17,6 +17,7 @@ import {
   sampleForModel,
   stopMotion,
   strokeIsUsable,
+  strokePolyline,
   useStrokeCapture,
   type MotionSpec,
   type StrokePoint,
@@ -35,10 +36,6 @@ function stopAllMotion(nodes: Partial<Record<PictureId, HTMLDivElement | null>>)
   }
 }
 
-function polyline(points: StrokePoint[]) {
-  return points.map((point) => `${point.x},${point.y}`).join(" ");
-}
-
 export function Demo() {
   const [open, setOpen] = useState(false);
   const [pictureId, setPictureId] = useState<PictureId | null>(null);
@@ -54,7 +51,6 @@ export function Demo() {
     points: rawPoints,
     cleanedPoints,
     ready: strokeReady,
-    drawing: strokeLive,
     bindings: strokeBindings,
     clear: clearCapturedStroke,
     getPoints,
@@ -236,7 +232,7 @@ export function Demo() {
       </a>
 
       <div
-        className={cn("relative", strokeLive && "touch-none")}
+        className={cn("relative", pictureId && "touch-none")}
         {...strokeBindings}
       >
         <header className="flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-2 sm:px-10">
@@ -337,7 +333,7 @@ export function Demo() {
             aria-hidden="true"
           >
             <polyline
-              points={polyline(rawPoints)}
+              points={strokePolyline(rawPoints)}
               fill="none"
               stroke="#161616"
               strokeWidth="1.75"

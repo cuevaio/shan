@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { parseMotionSpec } from "./motion-spec";
 import { cleanupPlan, readingPlan } from "./playback";
-import { cleanStroke, sampleForModel, strokeIsUsable, type StrokePoint } from "./stroke";
+import {
+  cleanStroke,
+  sampleForModel,
+  strokeIsUsable,
+  strokePolyline,
+  type StrokePoint,
+} from "./stroke";
 
 const stroke: StrokePoint[] = [
   { x: 0.1, y: 0.2, t: 0 },
@@ -26,6 +32,7 @@ describe("motion tools", () => {
     expect(strokeIsUsable(stroke)).toBe(true);
     expect(cleanStroke(stroke)).toHaveLength(3);
     expect(sampleForModel(stroke, 2)).toEqual([stroke[0], stroke[2]]);
+    expect(strokePolyline(stroke)).toBe("0.1,0.2 0.4,0.3 0.8,0.4");
   });
 
   test("builds cleanup and named-motion playback plans", () => {
