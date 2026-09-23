@@ -1,3 +1,5 @@
+import { DEFAULT_SHAN_MODEL_ID } from "../models";
+
 export const MOTION_NAMES = ["orbit", "hold", "slide", "sway", "rise", "pulse"] as const;
 export const EASING_NAMES = ["linear", "ease-in", "ease-out", "ease-in-out"] as const;
 
@@ -12,7 +14,7 @@ export type MotionSpec = {
   reading: string;
 };
 
-export const DEFAULT_NEBIUS_MODEL = "meta-llama/Llama-3.3-70B-Instruct";
+export const DEFAULT_NEBIUS_MODEL = DEFAULT_SHAN_MODEL_ID;
 export const NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/";
 
 const MOTION_LABELS: Record<MotionName, string> = {
