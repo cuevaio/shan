@@ -1,4 +1,5 @@
 import type { LanguageModel } from "ai";
+import { DEFAULT_SHAN_MODEL_ID, SHAN_MODELS, type ShanModelOption } from "./models";
 import { createMotionRouteHandlers } from "./motion-next";
 import { runCodingAgent } from "./server/agent";
 import { normalizePromptContext } from "./server/context";
@@ -12,7 +13,10 @@ export type ShanRouteOptions = {
   enabled?: boolean;
   apiKey?: string;
   model?: LanguageModel;
+  /** Default model ID. Add `models` with one entry to disable model switching. */
   modelId?: string;
+  /** Models exposed by the editor and accepted by this route. */
+  models?: readonly ShanModelOption[];
   instructions?: string;
   maxSteps?: number;
   /** Additional accepted request origins, for proxied local development. */
@@ -41,10 +45,28 @@ function sameOrigin(request: Request, allowed: string[]) {
 export function createShanRouteHandler(options: ShanRouteOptions = {}) {
   const enabled = options.enabled ?? process.env.NODE_ENV !== "production";
   const rootPromise = WorkspaceDraft.create(options.root ?? process.cwd()).then((workspace) => workspace.root);
-  const motionHandlers = createMotionRouteHandlers({
-    apiKey: options.apiKey,
-    modelId: options.modelId,
-  });
+  const models: ShanModelOption[] = options.model ? [] : [...(options.models ?? SHAN_MODELS)];
+  if (options.modelId && !models.some((model) => model.id === options.modelId)) {
+    models.unshift({
+      id: options.modelId,
+      label: options.modelId.split("/").at(-1) ?? options.modelId,
+      description: "Custom configured model.",
+    });
+  }
+  const defaultModelId = options.modelId ?? models[0]?.id ?? DEFAULT_SHAN_MODEL_ID;
+  const modelCatalog = { models, defaultModelId };
+  const acceptedModelIds = new Set(models.map((model) => model.id));
+
+  function selectedModel(body: Record<string, unknown>) {
+    return typeof body.modelId === "string" ? body.modelId : defaultModelId;
+  }
+
+  function invalidModel(body: Record<string, unknown>) {
+    return body.modelId !== undefined && (
+      typeof body.modelId !== "string"
+      || !acceptedModelIds.has(body.modelId)
+    );
+  }
 
   return async function POST(request: Request): Promise<Response> {
     if (!enabled) return json({ status: "error", error: "Not found." }, 404);
@@ -59,7 +81,9 @@ export function createShanRouteHandler(options: ShanRouteOptions = {}) {
       const root = await rootPromise;
       if (body.action === "status") {
         const proposal = await getActiveProposal(root);
-        return proposal ? json({ status: "previewing", proposal }) : json({ status: "idle" });
+        return proposal
+          ? json({ status: "previewing", proposal, ...modelCatalog })
+          : json({ status: "idle", ...modelCatalog });
       }
       if (body.action === "prompt") {
         if (typeof body.prompt !== "string" || !body.prompt.trim()) {
@@ -68,13 +92,16 @@ export function createShanRouteHandler(options: ShanRouteOptions = {}) {
         if (body.prompt.length > 10_000) {
           return json({ status: "error", error: "The prompt cannot exceed 10,000 characters." }, 400);
         }
+        if (invalidModel(body)) {
+          return json({ status: "error", error: "The selected model is not available." }, 400);
+        }
         const proposal = await runCodingAgent({
           root,
           prompt: body.prompt.trim(),
           context: normalizePromptContext(body.context),
           apiKey: options.apiKey,
           model: options.model,
-          modelId: options.modelId,
+          modelId: selectedModel(body),
           instructions: options.instructions,
           maxSteps: options.maxSteps,
         });
@@ -82,6 +109,13 @@ export function createShanRouteHandler(options: ShanRouteOptions = {}) {
       }
 
       if (body.action === "motion") {
+        if (invalidModel(body)) {
+          return json({ status: "error", error: "The selected model is not available." }, 400);
+        }
+        const motionHandlers = createMotionRouteHandlers({
+          apiKey: options.apiKey,
+          modelId: selectedModel(body),
+        });
         return motionHandlers.POST(new Request(request.url, {
           method: "POST",
           headers: { "content-type": "application/json" },

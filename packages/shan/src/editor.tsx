@@ -21,6 +21,7 @@ import {
   strokePolyline,
   useStrokeCapture,
 } from "./motion";
+import type { ShanModelOption } from "./models";
 import type {
   Proposal,
   SelectedElementContext,
@@ -98,6 +99,18 @@ const styles: Record<string, CSSProperties> = {
     font: "600 12px/1.4 inherit",
     cursor: "pointer",
     whiteSpace: "nowrap",
+  },
+  select: {
+    maxWidth: 190,
+    minWidth: 0,
+    border: "1px solid rgba(255,255,255,.14)",
+    borderRadius: 10,
+    outline: 0,
+    padding: "9px 28px 9px 10px",
+    color: "#d1d5db",
+    background: "#191b21",
+    font: "600 12px/1.4 inherit",
+    cursor: "pointer",
   },
   activeButton: {
     border: "1px solid #a78bfa",
@@ -197,6 +210,8 @@ export function ShanEditor({
   previewReloadDelayMs = 500,
 }: ShanEditorProps) {
   const [prompt, setPrompt] = useState("");
+  const [models, setModels] = useState<ShanModelOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string>();
   const [state, setState] = useState<EditorState>({ name: "idle" });
   const [mode, setMode] = useState<EditorMode>("idle");
   const [selected, setSelected] = useState<SelectedElementContext | null>(null);
@@ -221,6 +236,17 @@ export function ShanEditor({
     let cancelled = false;
     void post(endpoint, { action: "status" })
       .then((result) => {
+        if (!cancelled && (result.status === "idle" || result.status === "previewing") && result.models) {
+          setModels(result.models);
+          setSelectedModelId((selectedModel) => {
+            let stored: string | null = null;
+            try { stored = window.sessionStorage.getItem(`shan:model:${endpoint}`); } catch {}
+            const candidate = selectedModel ?? stored ?? result.defaultModelId;
+            return result.models?.some((model) => model.id === candidate)
+              ? candidate
+              : result.models?.[0]?.id;
+          });
+        }
         if (!cancelled && result.status === "previewing") setState({ name: "previewing", proposal: result.proposal });
       })
       .catch(() => {});
@@ -291,7 +317,12 @@ export function ShanEditor({
     if (!value || busy || proposal) return;
     setState({ name: "working" });
     try {
-      const result = await post(endpoint, { action: "prompt", prompt: value, context: promptContext() });
+      const result = await post(endpoint, {
+        action: "prompt",
+        prompt: value,
+        context: promptContext(),
+        ...(selectedModelId ? { modelId: selectedModelId } : {}),
+      });
       if (result.status !== "previewing") throw new Error("The agent returned an unexpected response.");
       setState({ name: "refreshing", proposal: result.proposal });
       window.setTimeout(() => window.location.reload(), Math.max(0, previewReloadDelayMs));
@@ -333,7 +364,11 @@ export function ShanEditor({
     if (!selectedNode.current || !strokeIsUsable(points)) return;
     setMotionMessage("Reading the drawing…");
     try {
-      const result = await post(endpoint, { action: "motion", points: sampleForModel(points) });
+      const result = await post(endpoint, {
+        action: "motion",
+        points: sampleForModel(points),
+        ...(selectedModelId ? { modelId: selectedModelId } : {}),
+      });
       if (result.status === "waiting") {
         setMotionMessage(result.message);
         playDrawing();
@@ -365,6 +400,11 @@ export function ShanEditor({
       event.preventDefault();
       void sendPrompt();
     }
+  }
+
+  function selectModel(modelId: string) {
+    setSelectedModelId(modelId);
+    try { window.sessionStorage.setItem(`shan:model:${endpoint}`, modelId); } catch {}
   }
 
   const drawingReady = strokeIsUsable(stroke.points);
@@ -417,6 +457,22 @@ export function ShanEditor({
             rows={1}
             style={styles.textarea}
           />
+          {models.length > 1 ? (
+            <select
+              aria-label="AI model"
+              disabled={busy || !!proposal}
+              value={selectedModelId}
+              onChange={(event) => selectModel(event.target.value)}
+              style={{ ...styles.select, opacity: busy || proposal ? .5 : 1 }}
+              title={models.find((model) => model.id === selectedModelId)?.description}
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.id} title={model.description}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <button disabled={!prompt.trim() || busy || !!proposal} type="submit" style={{ ...styles.button, opacity: !prompt.trim() || busy || proposal ? .5 : 1 }}>
             {state.name === "working" ? "Working…" : "Apply"}
           </button>

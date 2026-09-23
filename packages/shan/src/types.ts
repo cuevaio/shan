@@ -1,3 +1,5 @@
+import type { ShanModelOption } from "./models";
+
 export type ProposedFile = {
   path: string;
   status: "created" | "modified" | "deleted";
@@ -29,10 +31,10 @@ export type ShanPromptContext = {
 };
 
 export type ShanApiResponse =
-  | { status: "previewing"; proposal: Proposal }
+  | { status: "previewing"; proposal: Proposal; models?: ShanModelOption[]; defaultModelId?: string }
   | { status: "kept"; files: string[] }
   | { status: "discarded"; files: string[] }
-  | { status: "idle" }
+  | { status: "idle"; models?: ShanModelOption[]; defaultModelId?: string }
   | { status: "waiting"; message: string }
   | { status: "reading"; spec: unknown; latencyMs: number; model: string }
   | { status: "error"; error?: string; message?: string };

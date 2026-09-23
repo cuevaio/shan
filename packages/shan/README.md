@@ -43,6 +43,22 @@ Set the API key in `.env.local`:
 NEBIUS_API_KEY=...
 ```
 
+The editor includes a curated selector for code-capable Token Factory models.
+DeepSeek V4.1 Flash is the default. The selected model is used for prompts and
+model-backed motion readings. You can change the default or restrict the
+choices exposed by the route:
+
+```ts
+export const POST = createShanRouteHandler({
+  modelId: "moonshotai/Kimi-K2.7-Code",
+  models: [{
+    id: "moonshotai/Kimi-K2.7-Code",
+    label: "Kimi K2.7 Code",
+    description: "Coding-specialized model with reliable agentic tool use.",
+  }],
+});
+```
+
 Shan is disabled automatically when `NODE_ENV=production`. If you deliberately expose it elsewhere, add authentication and pass `enabled: true` explicitly.
 
 ## Visual context
