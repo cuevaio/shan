@@ -35,6 +35,7 @@ import type {
   ShanApiResponse,
   ShanPromptContext,
   ShanSession,
+  ShanSessionSummary,
 } from "./types";
 
 export type ShanEditorProps = {
@@ -140,6 +141,17 @@ const styles: Record<string, CSSProperties> = {
     letterSpacing: "-.02em",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  sessionSelect: {
+    width: "100%",
+    margin: "4px 0 2px",
+    border: 0,
+    outline: 0,
+    padding: "2px 22px 2px 0",
+    color: "#f3f4ef",
+    background: "#111412",
+    font: "650 14px/1.4 inherit",
+    cursor: "pointer",
   },
   sessionMeta: { color: "#969d96", fontSize: 9 },
   filters: { display: "flex", gap: 5, marginTop: 10 },
@@ -595,6 +607,8 @@ export function ShanEditor({
   const [selectedModelId, setSelectedModelId] = useState<string>();
   const [state, setState] = useState<EditorState>({ name: "idle" });
   const [session, setSession] = useState<ShanSession>();
+  const [sessionList, setSessionList] = useState<ShanSessionSummary[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
   const [mode, setMode] = useState<EditorMode>("idle");
   const [selected, setSelected] = useState<SelectedElementContext | null>(null);
@@ -635,7 +649,11 @@ export function ShanEditor({
       .then((result) => {
         if (!cancelled && "session" in result && result.session) {
           rememberSession(endpoint, result.session);
+          setCurrentSessionId(result.session.id);
           setSession(result.session);
+        }
+        if (!cancelled && "sessions" in result && result.sessions) {
+          setSessionList(result.sessions);
         }
         if (
           !cancelled &&
@@ -673,12 +691,15 @@ export function ShanEditor({
     const refresh = () =>
       void post(endpoint, {
         action: "status",
-        sessionId: session?.id ?? readSessionId(endpoint),
+        sessionId: currentSessionId ?? readSessionId(endpoint),
       })
         .then((result) => {
           if (!cancelled && "session" in result && result.session) {
             rememberSession(endpoint, result.session);
             setSession(result.session);
+          }
+          if (!cancelled && "sessions" in result && result.sessions) {
+            setSessionList(result.sessions);
           }
         })
         .catch(() => {});
@@ -688,7 +709,7 @@ export function ShanEditor({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [endpoint, session?.id, state.name]);
+  }, [currentSessionId, endpoint, state.name]);
 
   useEffect(() => {
     const node = feedNode.current;
@@ -758,7 +779,7 @@ export function ShanEditor({
   async function sendPrompt(event?: FormEvent) {
     event?.preventDefault();
     const value = prompt.trim();
-    if (!value || busy) return;
+    if (!value || busy || readOnly) return;
     stopMotion(selectedNode.current);
     try {
       const before = capturePageSnapshot(document.body).snapshot;
@@ -775,13 +796,14 @@ export function ShanEditor({
         action: "prompt",
         prompt: value,
         context: promptContext(),
-        sessionId: session?.id,
+        sessionId: currentSessionId,
         ...(selectedModelId ? { modelId: selectedModelId } : {}),
       });
       if (result.status !== "previewing")
         throw new Error("The agent returned an unexpected response.");
       if (result.session) {
         rememberSession(endpoint, result.session);
+        setCurrentSessionId(result.session.id);
         setSession(result.session);
       }
       setState({ name: "refreshing", proposal: result.proposal });
@@ -809,7 +831,7 @@ export function ShanEditor({
       const result = await post(endpoint, {
         action,
         proposalId: proposal.id,
-        sessionId: session?.id,
+        sessionId: currentSessionId,
       });
       if (action === "keep" && result.status !== "kept")
         throw new Error("The agent returned an unexpected response.");
@@ -860,7 +882,7 @@ export function ShanEditor({
     try {
       const result = await post(endpoint, {
         action: "newSession",
-        sessionId: session?.id,
+        sessionId: currentSessionId,
         discardPreview: !!proposal,
       });
       if (result.status !== "session_started")
@@ -869,7 +891,9 @@ export function ShanEditor({
       clearContext();
       setPrompt("");
       rememberSession(endpoint, result.session);
+      setCurrentSessionId(result.session.id);
       setSession(result.session);
+      if (result.sessions) setSessionList(result.sessions);
       setState({ name: "idle" });
     } catch (error) {
       setState({
@@ -879,6 +903,31 @@ export function ShanEditor({
             ? error.message
             : "Could not start a new session.",
         proposal,
+      });
+    }
+  }
+
+  async function viewSession(sessionId: string) {
+    if (busy || sessionId === session?.id) return;
+    try {
+      const result = await post(endpoint, { action: "status", sessionId });
+      if (result.status !== "idle" && result.status !== "previewing") {
+        throw new Error("The session could not be loaded.");
+      }
+      if (result.session) setSession(result.session);
+      if (result.sessions) setSessionList(result.sessions);
+      setState(
+        result.status === "previewing"
+          ? { name: "previewing", proposal: result.proposal }
+          : { name: "idle" },
+      );
+    } catch (error) {
+      setState({
+        name: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not load the session.",
       });
     }
   }
@@ -949,6 +998,7 @@ export function ShanEditor({
   }
 
   const drawingReady = strokeIsUsable(stroke.points);
+  const readOnly = !!currentSessionId && session?.id !== currentSessionId;
   const contextLabel = selected
     ? `${selected.selector}${stroke.points.length ? ` · drawing ${stroke.points.length} points` : ""}`
     : stroke.points.length
@@ -1027,10 +1077,26 @@ export function ShanEditor({
         </header>
 
         <section style={styles.sessionHeader}>
-          <div style={styles.sessionEyebrow}>Current session</div>
-          <div style={styles.sessionTitle} title={session?.title}>
-            {session?.title ?? "New session"}
+          <div style={styles.sessionEyebrow}>
+            {readOnly ? "Previous session · Read only" : "Current session"}
           </div>
+          <select
+            aria-label="Conversation session"
+            value={session?.id ?? ""}
+            onChange={(event) => void viewSession(event.target.value)}
+            style={styles.sessionSelect}
+          >
+            {sessionList.map((summary) => (
+              <option key={summary.id} value={summary.id}>
+                {summary.id === currentSessionId ? "Current — " : ""}
+                {summary.title}
+              </option>
+            ))}
+            {session &&
+            !sessionList.some((summary) => summary.id === session.id) ? (
+              <option value={session.id}>{session.title}</option>
+            ) : null}
+          </select>
           <div style={styles.sessionMeta}>
             {session?.messages.length ?? 0} messages ·{" "}
             {session?.activities.length ?? 0} activities
@@ -1335,15 +1401,17 @@ export function ShanEditor({
             <textarea
               aria-label="Change prompt"
               value={prompt}
-              disabled={busy}
+              disabled={busy || readOnly}
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={onKeyDown}
               placeholder={
-                busy
-                  ? "Applying changes…"
-                  : session?.messages.length
-                    ? "Continue this conversation…"
-                    : placeholder
+                readOnly
+                  ? "Previous sessions are read only"
+                  : busy
+                    ? "Applying changes…"
+                    : session?.messages.length
+                      ? "Continue this conversation…"
+                      : placeholder
               }
               rows={1}
               style={styles.textarea}
@@ -1380,11 +1448,11 @@ export function ShanEditor({
               )}
               <span style={styles.sendHint}>↵ Send · ⇧↵ New line</span>
               <button
-                disabled={!prompt.trim() || busy}
+                disabled={!prompt.trim() || busy || readOnly}
                 type="submit"
                 style={{
                   ...styles.button,
-                  opacity: !prompt.trim() || busy ? 0.5 : 1,
+                  opacity: !prompt.trim() || busy || readOnly ? 0.5 : 1,
                 }}
               >
                 {state.name === "working" ? "Working…" : "Send"}

@@ -13,4 +13,5 @@ export type {
   ShanConversationMessage,
   ShanPromptContext,
   ShanSession,
+  ShanSessionSummary,
 } from "./types";

@@ -63,11 +63,21 @@ export type ShanSession = {
   activities: ShanAgentActivity[];
 };
 
+export type ShanSessionSummary = {
+  id: string;
+  title: string;
+  status: ShanSession["status"];
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+};
+
 export type ShanApiResponse =
   | {
       status: "previewing";
       proposal: Proposal;
       session?: ShanSession;
+      sessions?: ShanSessionSummary[];
       models?: ShanModelOption[];
       defaultModelId?: string;
     }
@@ -76,10 +86,15 @@ export type ShanApiResponse =
   | {
       status: "idle";
       session?: ShanSession;
+      sessions?: ShanSessionSummary[];
       models?: ShanModelOption[];
       defaultModelId?: string;
     }
-  | { status: "session_started"; session: ShanSession }
+  | {
+      status: "session_started";
+      session: ShanSession;
+      sessions?: ShanSessionSummary[];
+    }
   | { status: "waiting"; message: string }
   | { status: "reading"; spec: unknown; latencyMs: number; model: string }
   | { status: "error"; error?: string; message?: string };

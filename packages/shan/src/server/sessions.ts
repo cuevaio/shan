@@ -6,6 +6,7 @@ import type {
   ShanAgentActivity,
   ShanConversationMessage,
   ShanSession,
+  ShanSessionSummary,
 } from "../types";
 
 export type ActivityUpdate = Omit<ShanAgentActivity, "turnId" | "createdAt">;
@@ -35,6 +36,50 @@ function storagePath(root: string, sessionId: string) {
   return join(tmpdir(), "shan", `${projectId}.session.json`);
 }
 
+function indexPath(root: string) {
+  const projectId = createHash("sha256").update(root).digest("hex");
+  return join(tmpdir(), "shan", `${projectId}.sessions.json`);
+}
+
+function summarize(session: ShanSession): ShanSessionSummary {
+  return {
+    id: session.id,
+    title: session.title,
+    status: session.status,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    messageCount: session.messages.length,
+  };
+}
+
+async function readIndex(root: string): Promise<ShanSessionSummary[]> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(indexPath(root), "utf8"));
+    return Array.isArray(parsed) ? (parsed as ShanSessionSummary[]) : [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function updateIndex(root: string, session: ShanSession) {
+  return serialize(root, "@index", async () => {
+    const summaries = await readIndex(root);
+    const updated = [
+      summarize(session),
+      ...summaries.filter((summary) => summary.id !== session.id),
+    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    const path = indexPath(root);
+    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(updated), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(temporary, path);
+    return updated;
+  });
+}
+
 function freshSession(id: string = crypto.randomUUID()): ShanSession {
   const now = new Date().toISOString();
   return {
@@ -59,6 +104,7 @@ async function persist(root: string, session: ShanSession) {
   });
   await rename(temporary, path);
   sessions.set(key, session);
+  await updateIndex(root, session);
 }
 
 function serialize<T>(
@@ -108,6 +154,18 @@ export async function getSession(
     await persist(root, session);
     return session;
   }
+}
+
+export async function listSessions(root: string) {
+  const indexed = await readIndex(root);
+  const cached = [...sessions.entries()]
+    .filter(([key]) => key.startsWith(`${root}\u0000`))
+    .map(([, session]) => summarize(session));
+  const merged = new Map(indexed.map((summary) => [summary.id, summary]));
+  for (const summary of cached) merged.set(summary.id, summary);
+  return [...merged.values()].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt),
+  );
 }
 
 function sessionTitle(prompt: string) {

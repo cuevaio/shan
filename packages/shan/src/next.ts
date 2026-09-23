@@ -17,6 +17,7 @@ import {
   completeTurn,
   failTurn,
   getSession,
+  listSessions,
   recordActivity,
   setProposalStatus,
   startNewSession,
@@ -120,10 +121,11 @@ export function createShanRouteHandler(options: ShanRouteOptions = {}) {
       const root = await rootPromise;
       if (body.action === "status") {
         const sessionId = requestedSessionId(body);
-        const [proposal, session] = await Promise.all([
-          getActiveProposal(root),
-          sessionId ? getSession(root, sessionId) : startNewSession(root),
-        ]);
+        const proposal = await getActiveProposal(root);
+        const session = sessionId
+          ? await getSession(root, sessionId)
+          : await startNewSession(root);
+        const sessionList = await listSessions(root);
         const ownedProposal =
           proposal && (!proposal.sessionId || proposal.sessionId === session.id)
             ? proposal
@@ -133,9 +135,15 @@ export function createShanRouteHandler(options: ShanRouteOptions = {}) {
               status: "previewing",
               proposal: ownedProposal,
               session,
+              sessions: sessionList,
               ...modelCatalog,
             })
-          : json({ status: "idle", session, ...modelCatalog });
+          : json({
+              status: "idle",
+              session,
+              sessions: sessionList,
+              ...modelCatalog,
+            });
       }
       if (body.action === "prompt") {
         if (typeof body.prompt !== "string" || !body.prompt.trim()) {
@@ -237,7 +245,11 @@ export function createShanRouteHandler(options: ShanRouteOptions = {}) {
           );
         }
         const session = await startNewSession(root);
-        return json({ status: "session_started", session });
+        return json({
+          status: "session_started",
+          session,
+          sessions: await listSessions(root),
+        });
       }
 
       if (body.action === "motion") {

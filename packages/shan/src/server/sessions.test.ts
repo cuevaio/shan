@@ -6,6 +6,7 @@ import {
   beginTurn,
   completeTurn,
   getSession,
+  listSessions,
   recordActivity,
   setProposalStatus,
   startNewSession,
@@ -151,5 +152,27 @@ describe("conversation sessions", () => {
     expect((await getSession(root, "session-one")).messages[0].text).toBe(
       "First browser",
     );
+  });
+
+  test("lists previous sessions newest first for read-only navigation", async () => {
+    const root = await project();
+    const first = await beginTurn(root, "First conversation", "session-one");
+    await completeTurn(
+      root,
+      first.turnId,
+      "First answer",
+      "proposal-one",
+      "session-one",
+    );
+    await startNewSession(root);
+
+    const summaries = await listSessions(root);
+    expect(summaries).toHaveLength(2);
+    expect(summaries[0].id).not.toBe("session-one");
+    expect(summaries[1]).toMatchObject({
+      id: "session-one",
+      title: "First conversation",
+      messageCount: 2,
+    });
   });
 });

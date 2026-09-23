@@ -103,9 +103,13 @@ describe("Shan route conversations", () => {
     const statusResponse = await handler(request({ action: "status" }));
     const status = (await statusResponse.json()) as {
       session: { id: string; messages: unknown[] };
+      sessions: Array<{ id: string }>;
     };
 
     expect(status.session.messages).toEqual([]);
+    expect(status.sessions.map((session) => session.id)).toContain(
+      status.session.id,
+    );
 
     const newSessionResponse = await handler(request({ action: "newSession" }));
     const next = (await newSessionResponse.json()) as {
