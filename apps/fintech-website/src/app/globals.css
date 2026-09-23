@@ -92,6 +92,36 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body.pitch-active {
+  overflow: hidden;
+  background: #f4f0e8;
+}
+
+.pitch-deck ~ [data-shan-editor] {
+  display: none !important;
+}
+
+.pitch-enter {
+  animation: pitch-enter 240ms var(--ease-out) both;
+}
+
+@keyframes pitch-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pitch-enter {
+    animation: none;
+  }
+}
+
 .landing-skip {
   position: absolute;
   width: 1px;
