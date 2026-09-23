@@ -18,21 +18,30 @@ export type PlaybackPlan = {
   fill: FillMode;
 };
 
+const activeMotions = new WeakMap<Element, Animation>();
+
 export function stopMotion(element: Element | null) {
-  if (typeof HTMLElement === "undefined" || !(element instanceof HTMLElement)) return;
-  for (const animation of element.getAnimations()) animation.cancel();
-  element.style.transform = "";
+  if (!element) return;
+  activeMotions.get(element)?.cancel();
+  activeMotions.delete(element);
 }
 
 export function playMotion(element: Element | null, plan: PlaybackPlan | null) {
-  if (typeof HTMLElement === "undefined" || !(element instanceof HTMLElement) || !plan) return null;
+  if (!element || typeof element.animate !== "function" || !plan) return null;
   stopMotion(element);
-  return element.animate(plan.frames, {
+  const animation = element.animate(plan.frames, {
     duration: plan.duration,
     easing: plan.easing,
     iterations: plan.iterations,
     fill: plan.fill,
   });
+  activeMotions.set(element, animation);
+  const forget = () => {
+    if (activeMotions.get(element) === animation) activeMotions.delete(element);
+  };
+  animation.addEventListener("finish", forget, { once: true });
+  animation.addEventListener("cancel", forget, { once: true });
+  return animation;
 }
 
 function monotonic(frames: Keyframe[]) {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseMotionSpec } from "./motion-spec";
-import { cleanupPlan, readingPlan } from "./playback";
+import { cleanupPlan, playMotion, readingPlan, stopMotion } from "./playback";
 import {
   cleanStroke,
   sampleForModel,
@@ -49,5 +49,26 @@ describe("motion tools", () => {
     }, stroke, false);
     expect(reading.duration).toBe(1200);
     expect(reading.iterations).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  test("stops only the motion created by Shan and supports any animatable element", () => {
+    let cancelled = false;
+    const listeners = new Map<string, () => void>();
+    const animation = {
+      cancel() {
+        cancelled = true;
+        listeners.get("cancel")?.();
+      },
+      addEventListener(name: string, listener: EventListenerOrEventListenerObject) {
+        if (typeof listener === "function") listeners.set(name, listener as () => void);
+      },
+    } as unknown as Animation;
+    const element = {
+      animate: () => animation,
+    } as unknown as Element;
+
+    expect(playMotion(element, cleanupPlan(stroke, false))).toBe(animation);
+    stopMotion(element);
+    expect(cancelled).toBe(true);
   });
 });
