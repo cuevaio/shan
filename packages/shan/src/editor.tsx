@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -133,6 +134,23 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: "nowrap",
   },
   proposal: { borderTop: "1px solid rgba(255,255,255,.1)", padding: "14px 16px 16px" },
+  proposalHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  collapseButton: {
+    border: 0,
+    padding: "2px 0",
+    color: "#a1a1aa",
+    background: "transparent",
+    font: "inherit",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
   file: { borderTop: "1px solid rgba(255,255,255,.08)", padding: "7px 0" },
   patch: {
     maxHeight: 220,
@@ -250,6 +268,8 @@ export function ShanEditor({
   const [hoverBox, setHoverBox] = useState<Box | null>(null);
   const [pageBeforeChange, setPageBeforeChange] = useState<PageSnapshot>();
   const [motionMessage, setMotionMessage] = useState("");
+  const [areChangesExpanded, setAreChangesExpanded] = useState(true);
+  const changesId = useId();
   const selectedNode = useRef<Element | null>(null);
   const stroke = useStrokeCapture({
     enabled: mode === "draw",
@@ -352,6 +372,7 @@ export function ShanEditor({
     event?.preventDefault();
     const value = prompt.trim();
     if (!value || busy || proposal) return;
+    setAreChangesExpanded(true);
     stopMotion(selectedNode.current);
     try {
       const before = capturePageSnapshot(document.body).snapshot;
@@ -532,22 +553,35 @@ export function ShanEditor({
 
         {proposal ? (
           <section style={styles.proposal} aria-live="polite">
-            <div style={{ marginBottom: 8, color: state.name === "refreshing" ? "#facc15" : "#86efac", fontSize: 12, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>
-              {state.name === "refreshing" ? "Applying changes…" : "Changes are live — try the page now"}
+            <div style={styles.proposalHeader}>
+              <div style={{ color: state.name === "refreshing" ? "#facc15" : "#86efac", fontSize: 12, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>
+                {state.name === "refreshing" ? "Applying changes…" : "Changes are live — try the page now"}
+              </div>
+              <button
+                type="button"
+                style={styles.collapseButton}
+                aria-expanded={areChangesExpanded}
+                aria-controls={changesId}
+                onClick={() => setAreChangesExpanded((expanded) => !expanded)}
+              >
+                {areChangesExpanded ? "Hide changes" : "Show changes"}
+              </button>
             </div>
-            <div style={{ marginBottom: 9 }}>{proposal.summary}</div>
-            <div>
-              {proposal.files.map((file) => (
-                <details key={file.path} style={styles.file}>
-                  <summary style={{ cursor: "pointer" }}>
-                    <span style={{ opacity: .65, marginRight: 7 }}>{file.status}</span>
-                    {file.path}
-                    <span style={{ marginLeft: 8, color: "#86efac" }}>+{file.additions}</span>
-                    <span style={{ marginLeft: 4, color: "#fca5a5" }}>−{file.deletions}</span>
-                  </summary>
-                  <pre style={styles.patch}>{file.patch}</pre>
-                </details>
-              ))}
+            <div id={changesId} hidden={!areChangesExpanded} style={{ marginTop: 8 }}>
+              <div style={{ marginBottom: 9 }}>{proposal.summary}</div>
+              <div>
+                {proposal.files.map((file) => (
+                  <details key={file.path} style={styles.file}>
+                    <summary style={{ cursor: "pointer" }}>
+                      <span style={{ opacity: .65, marginRight: 7 }}>{file.status}</span>
+                      {file.path}
+                      <span style={{ marginLeft: 8, color: "#86efac" }}>+{file.additions}</span>
+                      <span style={{ marginLeft: 4, color: "#fca5a5" }}>−{file.deletions}</span>
+                    </summary>
+                    <pre style={styles.patch}>{file.patch}</pre>
+                  </details>
+                ))}
+              </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
               <button type="button" style={styles.mutedButton} disabled={busy} onClick={() => void decide("discard")}>
