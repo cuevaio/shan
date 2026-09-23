@@ -21,7 +21,7 @@ with the cursor.
 
 ## Current state
 
-The repository is a Turborepo with a publishable `nebi-agent` package and two Next.js examples. The Shan example is a private-account landing called Sable: a card, a transfer, and a member. A chosen picture opens a toolbox beside it. Without an API key the picture follows a local cleanup of the stroke. With `NEBIUS_API_KEY`, refine sends the path coordinates to Nebius Token Factory and plays the named motion it returns. The Nebi example demonstrates prompt-driven live code editing with keep and discard controls.
+The repository is a Turborepo with a publishable `shan` package and two UI-only Next.js examples: a marketing website and a private-account fintech website called Sable. The package provides the floating editor, DOM selection, drawing notes, direct animation, model-backed motion readings, element-aware code prompts, and keep/discard controls.
 
 ## Next action
 
