@@ -89,6 +89,39 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 11px 0 13px",
     borderBottom: `1px solid ${line}`,
   },
+  headerStart: { display: "flex", alignItems: "center", gap: 9 },
+  minimizeButton: {
+    display: "grid",
+    placeItems: "center",
+    width: 28,
+    height: 28,
+    border: `1px solid ${strongLine}`,
+    borderRadius: 8,
+    padding: 0,
+    color: "#b7bcb7",
+    background: "rgba(255,255,255,.035)",
+    font: "600 16px/1 inherit",
+    cursor: "pointer",
+  },
+  restoreButton: {
+    position: "fixed",
+    zIndex: 2147483647,
+    right: 16,
+    bottom: 16,
+    display: "grid",
+    placeItems: "center",
+    width: 48,
+    height: 48,
+    border: "1px solid rgba(168,230,193,.28)",
+    borderRadius: 15,
+    padding: 0,
+    color: "#a8e6c1",
+    background: "rgba(17,20,18,.975)",
+    boxShadow: "0 16px 44px rgba(9,12,10,.35), 0 2px 8px rgba(9,12,10,.24)",
+    backdropFilter: "blur(20px)",
+    font: "700 18px/1 ui-sans-serif, system-ui, sans-serif",
+    cursor: "pointer",
+  },
   brand: { display: "flex", alignItems: "center", gap: 8, fontWeight: 700 },
   mark: {
     display: "grid",
@@ -620,6 +653,7 @@ export function ShanEditor({
   const [sessionList, setSessionList] = useState<ShanSessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
+  const [minimized, setMinimized] = useState(false);
   const [mode, setMode] = useState<EditorMode>("idle");
   const [selected, setSelected] = useState<SelectedElementContext | null>(null);
   const [selectedBox, setSelectedBox] = useState<Box | null>(null);
@@ -1018,6 +1052,22 @@ export function ShanEditor({
       ? `Drawing note · ${stroke.points.length} points`
       : "No element selected — prompt applies globally";
 
+  if (minimized) {
+    return (
+      <button
+        data-shan-editor
+        className={className}
+        type="button"
+        style={styles.restoreButton}
+        aria-label="Restore Shan editor"
+        title="Restore Shan editor"
+        onClick={() => setMinimized(false)}
+      >
+        <span aria-hidden="true">✦</span>
+      </button>
+    );
+  }
+
   return (
     <>
       {mode === "draw" ? (
@@ -1074,10 +1124,25 @@ export function ShanEditor({
         aria-label="Shan visual editor"
       >
         <header style={styles.header}>
-          <div style={styles.brand}>
-            <span style={styles.mark}>✦</span>
-            <span>Shan</span>
-            <span style={styles.live}>Live</span>
+          <div style={styles.headerStart}>
+            <button
+              type="button"
+              style={styles.minimizeButton}
+              aria-label="Minimize Shan editor"
+              title="Minimize"
+              onClick={() => {
+                setMode("idle");
+                setHoverBox(null);
+                setMinimized(true);
+              }}
+            >
+              <span aria-hidden="true">−</span>
+            </button>
+            <div style={styles.brand}>
+              <span style={styles.mark}>✦</span>
+              <span>Shan</span>
+              <span style={styles.live}>Live</span>
+            </div>
           </div>
           <button
             type="button"
