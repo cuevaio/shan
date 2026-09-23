@@ -1,36 +1,41 @@
 # Shan
 
-Draw a motion with the cursor. Shan reads the gesture and plays it on a picture.
+Shan is a visual agent editor for Next.js. Select an element, draw a motion note, preview the animation, and ask the coding agent to change the page with that visual context.
 
-A shaky circle is an orbit. A pause is a hold. Refine asks a model for a named motion with easing and duration. A local cleanup of the same stroke sits beside that reading: a smoothed polyline, not a guess at the gesture.
+## Workspace
 
-Only the path coordinates are sent. The picture stays in the browser.
+- [`packages/shan`](packages/shan) — the publishable `shan` npm package
+- [`apps/marketing-website`](apps/marketing-website) — a minimal marketing-site example
+- [`apps/fintech-website`](apps/fintech-website) — the Sable fintech-site example
+
+Both examples are UI-only sites. Element selection, drawing capture, direct animation, model-backed motion reading, prompt context, live code changes, and keep/discard are implemented by the package.
 
 ## Develop
 
-```bash
+```sh
 bun install
-bun run dev -- --hostname 127.0.0.1 --port 4721
+cp apps/marketing-website/.env.example apps/marketing-website/.env.local
+cp apps/fintech-website/.env.example apps/fintech-website/.env.local
+# Add NEBIUS_API_KEY to the examples you want to run.
+bun run dev
 ```
 
-Open http://127.0.0.1:4721
+- Marketing website: [http://localhost:3000](http://localhost:3000)
+- Fintech website: [http://localhost:4721](http://localhost:4721)
 
-The mark at the bottom of the page opens the toolbox. Pick a picture, draw, then refine.
+Run one example with a Turbo filter:
 
-## Model
-
-Refine calls [Nebius Token Factory](https://tokenfactory.nebius.com) when `NEBIUS_API_KEY` is set. The API is OpenAI-compatible.
-
-```bash
-NEBIUS_API_KEY=your_key bun run dev -- --hostname 127.0.0.1 --port 4721
+```sh
+bun run dev --filter=marketing-website
+bun run dev --filter=fintech-website
 ```
 
-Optional: `NEBIUS_MODEL`. The default is `meta-llama/Llama-3.3-70B-Instruct`.
+## Verify
 
-Without the key, capture still works and the picture follows the cleaned stroke. The toolbox says the model step is waiting on the key.
+```sh
+bun run test
+bun run typecheck
+bun run build
+```
 
-Copy `.env.example` to `.env.local` if you want the key loaded for you. `.env.local` stays out of git.
-
-## Privacy
-
-The refine request body is a list of `{ x, y, t }` points. It does not include the picture.
+See the [package README](packages/shan/README.md) for installation and API details.
