@@ -2,7 +2,7 @@ export const PICTURES = [
   {
     id: "card",
     src: "/images/card.png",
-    alt: "A matte charcoal card on warm stone",
+    alt: "A matte charcoal debit card",
     label: "Card",
   },
   {

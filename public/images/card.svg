@@ -1,7 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" fill="none">
-  <rect width="800" height="1000" fill="#E6E6E6"/>
-  <rect x="230" y="250" width="280" height="420" rx="6" fill="#F7F7F5" transform="rotate(-8 370 460)"/>
-  <rect x="300" y="280" width="250" height="380" rx="4" fill="#111111" transform="rotate(6 425 470)"/>
-  <rect x="330" y="330" width="150" height="8" fill="#F4F4F2" transform="rotate(6 405 334)"/>
-  <rect x="338" y="360" width="110" height="6" fill="#F4F4F2" opacity="0.7" transform="rotate(6 393 363)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 929 581" fill="none">
+  <!-- Soft contact shadow (not an environment) -->
+  <g opacity="0.22" filter="url(#blur)">
+    <path
+      d="M216 268 L716 238 L796 548 L176 518 Z"
+      fill="#161616"
+    />
+  </g>
+  <!-- Matte charcoal card, slight perspective -->
+  <defs>
+    <linearGradient id="face" x1="200" y1="220" x2="780" y2="540" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3a3a3c"/>
+      <stop offset="0.55" stop-color="#2a2a2c"/>
+      <stop offset="1" stop-color="#1e1e20"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#c4bdaa"/>
+      <stop offset="0.5" stop-color="#a89e8c"/>
+      <stop offset="1" stop-color="#8f8676"/>
+    </linearGradient>
+    <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+  <path
+    d="M204 252
+       C210 240 228 232 248 230
+       L688 198
+       C708 196 728 208 734 228
+       L792 508
+       C798 528 786 548 766 552
+       L206 522
+       C186 520 172 502 176 482
+       Z"
+    fill="url(#face)"
+  />
+  <!-- EMV chip -->
+  <path
+    d="M268 318 L372 310 L380 392 L276 400 Z"
+    fill="url(#chip)"
+  />
+  <path
+    d="M284 334 L356 328 L362 380 L290 386 Z"
+    fill="#d2cbb8"
+    opacity="0.55"
+  />
+  <path d="M286 348 L358 342" stroke="#7a7264" stroke-width="2" stroke-linecap="round"/>
+  <path d="M288 362 L360 356" stroke="#7a7264" stroke-width="2" stroke-linecap="round"/>
+  <path d="M290 376 L362 370" stroke="#7a7264" stroke-width="2" stroke-linecap="round"/>
 </svg>

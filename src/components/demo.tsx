@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Toolbox, type RefineView } from "@/components/toolbox";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,10 @@ function stopMotion(nodes: Partial<Record<PictureId, HTMLDivElement | null>>) {
   }
 }
 
+function polyline(points: StrokePoint[]) {
+  return points.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
 export function Demo() {
   const [open, setOpen] = useState(false);
   const [pictureId, setPictureId] = useState<PictureId | null>(null);
@@ -39,9 +44,20 @@ export function Demo() {
   const pointsRef = useRef<StrokePoint[]>([]);
   const returnFocus = useRef<PictureId | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const drawing = useRef(false);
+  const [strokeLive, setStrokeLive] = useState(false);
+  const startedAt = useRef(0);
+  const lastPoint = useRef<StrokePoint | null>(null);
+  const sampleTimer = useRef<number | null>(null);
+  const pictureIdRef = useRef<PictureId | null>(null);
 
   const cleanedPoints = useMemo(() => cleanStroke(rawPoints), [rawPoints]);
   const strokeReady = strokeIsUsable(rawPoints);
+
+  useEffect(() => {
+    pictureIdRef.current = pictureId;
+  }, [pictureId]);
 
   const close = useCallback(() => {
     returnFocus.current = pictureId;
@@ -83,6 +99,7 @@ export function Demo() {
     const activeNodes = nodes.current;
     return () => {
       stopMotion(activeNodes);
+      if (sampleTimer.current !== null) window.clearInterval(sampleTimer.current);
     };
   }, []);
 
@@ -111,6 +128,10 @@ export function Demo() {
       fill: plan.fill,
     });
     node.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  function openToolbox() {
+    setOpen(true);
   }
 
   function selectPicture(id: PictureId) {
@@ -145,6 +166,95 @@ export function Demo() {
     setRefineView(configured === false ? { status: "waiting" } : { status: "idle" });
     setPlayback(null);
     stopMotion(nodes.current);
+  }
+
+  function clearSampleTimer() {
+    if (sampleTimer.current !== null) {
+      window.clearInterval(sampleTimer.current);
+      sampleTimer.current = null;
+    }
+  }
+
+  function pointFromClient(clientX: number, clientY: number): StrokePoint | null {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const rect = stage.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    return {
+      x: Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (clientY - rect.top) / rect.height)),
+      t: performance.now() - startedAt.current,
+    };
+  }
+
+  function shouldIgnoreDrawTarget(target: EventTarget | null) {
+    if (!(target instanceof Element)) return true;
+    if (target.closest("#shan-toolbox")) return true;
+    if (target.closest("[data-shan-mark]")) return true;
+    if (target.closest("a")) return true;
+    const select = target.closest("[data-picture-id]");
+    if (select instanceof HTMLElement) {
+      const id = select.dataset.pictureId;
+      if (id && id !== pictureIdRef.current) return true;
+    }
+    return false;
+  }
+
+  function beginStageDraw(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!pictureIdRef.current) return;
+    if (shouldIgnoreDrawTarget(event.target)) return;
+    if (event.button !== 0) return;
+
+    const firstPoint = pointFromClient(event.clientX, event.clientY);
+    if (!firstPoint) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drawing.current = true;
+    setStrokeLive(true);
+    startedAt.current = performance.now();
+    clearSampleTimer();
+    const first = { ...firstPoint, t: 0 };
+    lastPoint.current = first;
+    startDraw(first);
+    sampleTimer.current = window.setInterval(() => {
+      const last = lastPoint.current;
+      if (!drawing.current || !last) return;
+      const next = { x: last.x, y: last.y, t: performance.now() - startedAt.current };
+      if (next.t - last.t < 30) return;
+      lastPoint.current = next;
+      moveDraw(next);
+    }, 40);
+  }
+
+  function moveStageDraw(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!drawing.current) return;
+    const point = pointFromClient(event.clientX, event.clientY);
+    if (!point) return;
+    const last = lastPoint.current;
+    if (
+      last &&
+      Math.hypot(last.x - point.x, last.y - point.y) < 0.004 &&
+      point.t - last.t < 24
+    ) {
+      return;
+    }
+    lastPoint.current = point;
+    moveDraw(point);
+  }
+
+  function endStageDraw(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!drawing.current) return;
+    drawing.current = false;
+    setStrokeLive(false);
+    clearSampleTimer();
+    const point = pointFromClient(event.clientX, event.clientY);
+    if (point) {
+      lastPoint.current = point;
+      moveDraw(point);
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   async function refine() {
@@ -215,92 +325,135 @@ export function Demo() {
         Skip to the account
       </a>
 
-      <header className="flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-2 sm:px-10">
-        <p className="text-2xl tracking-tight" translate="no">
-          Sable
-        </p>
-        <p className="text-sm text-[#161616]/50">Private account</p>
-      </header>
-
-      <main className="pb-28">
-        <section className="px-6 pt-14 pb-10 sm:px-10 sm:pt-20">
-          <h1 className="max-w-3xl text-5xl leading-[1.02] tracking-tight text-balance sm:text-7xl">
-            Hold money quietly.
-          </h1>
-          <p className="mt-5 max-w-md text-lg leading-7 text-[#161616]/60 text-pretty">
-            A card, a transfer, and the member who holds them.
+      <div
+        ref={stageRef}
+        className={cn("relative", strokeLive && "touch-none")}
+        onPointerDown={beginStageDraw}
+        onPointerMove={moveStageDraw}
+        onPointerUp={endStageDraw}
+        onPointerCancel={endStageDraw}
+      >
+        <header className="flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-2 sm:px-10">
+          <p className="text-2xl tracking-tight" translate="no">
+            Sable
           </p>
-          <div className="mt-8">
-            <a
-              href="#account"
-              className="inline-flex h-10 items-center rounded-full bg-[#161616] px-4 text-sm text-[#f3f0e8] transition-transform duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-[#161616]/85 focus-visible:ring-2 focus-visible:ring-[#161616] focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.96]"
-            >
-              See the card
-            </a>
-          </div>
-        </section>
+          <p className="text-sm text-[#161616]/50">Private account</p>
+        </header>
 
-        <section id="account" className="scroll-mt-6 px-6 py-8 sm:px-10">
-          <h2 className="text-[12px] tracking-[0.16em] text-[#161616]/40 uppercase">
-            The account
-          </h2>
-          <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {PICTURES.map((picture) => {
-              const selected = pictureId === picture.id;
-              const playingHere = selected && playback !== null;
-              const span = picture.id === "card" ? "sm:col-span-2 lg:col-span-2 lg:row-span-2" : "";
-              return (
-                <li key={picture.id} className={span}>
-                  <figure>
-                    <div
-                      ref={(node) => {
-                        nodes.current[picture.id] = node;
-                      }}
-                      className="scroll-mt-4 will-change-transform"
-                      style={{ transformOrigin: "center center" }}
-                    >
-                      <button
+        <main className="pb-28">
+          <section className="px-6 pt-14 pb-10 sm:px-10 sm:pt-20">
+            <h1 className="max-w-3xl text-5xl leading-[1.02] tracking-tight text-balance sm:text-7xl">
+              Hold money quietly.
+            </h1>
+            <p className="mt-5 max-w-md text-lg leading-7 text-[#161616]/60 text-pretty">
+              A card, a transfer, and the member who holds them.
+            </p>
+            <div className="mt-8">
+              <a
+                href="#account"
+                className="inline-flex h-10 items-center rounded-full bg-[#161616] px-4 text-sm text-[#f3f0e8] transition-transform duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-[#161616]/85 focus-visible:ring-2 focus-visible:ring-[#161616] focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.96]"
+              >
+                See the card
+              </a>
+            </div>
+          </section>
+
+          <section id="account" className="scroll-mt-6 px-6 py-8 sm:px-10">
+            <h2 className="text-[12px] tracking-[0.16em] text-[#161616]/40 uppercase">
+              The account
+            </h2>
+            <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {PICTURES.map((picture) => {
+                const selected = pictureId === picture.id;
+                const playingHere = selected && playback !== null;
+                const span = picture.id === "card" ? "sm:col-span-2 lg:col-span-2 lg:row-span-2" : "";
+                return (
+                  <li key={picture.id} className={span}>
+                    <figure>
+                      <div
                         ref={(node) => {
-                          buttons.current[picture.id] = node;
+                          nodes.current[picture.id] = node;
                         }}
-                        type="button"
-                        aria-pressed={selected}
-                        aria-label={`Select ${picture.label}`}
-                        onClick={() => selectPicture(picture.id)}
-                        className="block w-full rounded-[28px] p-0 transition-transform duration-150 ease-[cubic-bezier(0.2,0,0,1)] outline-none active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-[#161616] focus-visible:ring-offset-2"
+                        className="scroll-mt-4 will-change-transform"
+                        style={{ transformOrigin: "center center" }}
                       >
-                        <img
-                          src={picture.src}
-                          alt={picture.alt}
-                          width={1200}
-                          height={900}
-                          className={cn(
-                            "w-full rounded-[28px] object-cover outline outline-1 outline-black/10",
-                            picture.id === "card" ? "aspect-[4/3] lg:aspect-[4/5] lg:h-full" : "aspect-[4/5]",
-                            selected && "shadow-[0_0_0_2px_#161616]",
-                          )}
-                        />
-                      </button>
-                    </div>
-                    <figcaption className="mt-3 text-sm leading-5">
-                      <span className={selected ? "text-[#161616]" : "text-[#161616]/55"}>
-                        {picture.label}
-                      </span>
-                      {playingHere ? (
-                        <span className="mt-1 block text-[#161616]/55">
-                          {playback.kind === "reading"
-                            ? playingLine("reading", playback.spec.name)
-                            : playingLine("cleanup")}
+                        <button
+                          ref={(node) => {
+                            buttons.current[picture.id] = node;
+                          }}
+                          type="button"
+                          data-picture-id={picture.id}
+                          aria-pressed={selected}
+                          aria-label={`Select ${picture.label}`}
+                          onClick={() => selectPicture(picture.id)}
+                          className="block w-full rounded-[28px] p-0 transition-transform duration-150 ease-[cubic-bezier(0.2,0,0,1)] outline-none active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-[#161616] focus-visible:ring-offset-2"
+                        >
+                          <img
+                            src={picture.src}
+                            alt={picture.alt}
+                            width={1200}
+                            height={900}
+                            className={cn(
+                              "w-full rounded-[28px]",
+                              picture.id === "card"
+                                ? "aspect-[4/3] object-contain lg:aspect-[4/5] lg:h-full"
+                                : "aspect-[4/5] object-cover outline outline-1 outline-black/10",
+                              selected && "shadow-[0_0_0_2px_#161616]",
+                            )}
+                          />
+                        </button>
+                      </div>
+                      <figcaption className="mt-3 text-sm leading-5">
+                        <span className={selected ? "text-[#161616]" : "text-[#161616]/55"}>
+                          {picture.label}
                         </span>
-                      ) : null}
-                    </figcaption>
-                  </figure>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      </main>
+                        {playingHere ? (
+                          <span className="mt-1 block text-[#161616]/55">
+                            {playback.kind === "reading"
+                              ? playingLine("reading", playback.spec.name)
+                              : playingLine("cleanup")}
+                          </span>
+                        ) : null}
+                      </figcaption>
+                    </figure>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </main>
+
+        {rawPoints.length > 1 ? (
+          <svg
+            viewBox="0 0 1 1"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute inset-0 z-40 h-full w-full"
+            aria-hidden="true"
+          >
+            <polyline
+              points={polyline(rawPoints)}
+              fill="none"
+              stroke="#161616"
+              strokeWidth="1.75"
+              vectorEffect="non-scaling-stroke"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : null}
+      </div>
+
+      <button
+        type="button"
+        data-shan-mark
+        aria-label="Open toolbox"
+        aria-expanded={open}
+        aria-controls="shan-toolbox"
+        onClick={openToolbox}
+        className="fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 grid size-11 place-items-center rounded-full bg-black text-[15px] leading-none font-medium text-white shadow-[0_2px_8px_rgba(0,0,0,0.28),0_0_0_1px_rgba(0,0,0,0.08)] outline-none transition-transform duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-black/90 focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 active:scale-[0.96]"
+      >
+        S
+      </button>
 
       <Toolbox
         open={open}
@@ -317,8 +470,6 @@ export function Demo() {
         }
         onClose={close}
         onExited={finishClose}
-        onDrawStart={startDraw}
-        onDrawMove={moveDraw}
         onClear={clearStroke}
         onRefine={() => void refine()}
         onPlayCleanup={() => {
